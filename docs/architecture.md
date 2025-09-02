@@ -25,6 +25,8 @@ Node side (per edge server):
 ### User Lifecycle
 Plan -> Subscription (per tenant). Subscription chooses engines set {xray, wireguard}. Assignment logic selects nodes (primary + redundancy) based on strategy (manual, round_robin, by_tag, by_capacity). Credentials created per engine: Xray UUID + alterId/flow, WireGuard keypair. Node-agent receives engine-specific instructions.
 
+Per-user engine override: Administrators can restrict or expand allowed engines independent of the subscription defaults via POST /users/{user_id}/engines (stored in UserEngines). Config & QR generation honors this filter.
+
 ### Scaling
 - Stateless API & collector scale horizontally behind proxy (shared Redis + Postgres).
 - Node-agent lightweight – maintains single streaming RPC with keepalive.
@@ -71,5 +73,15 @@ Automatic partition creation by scheduler (create next N days/months) & drop exp
 ## 5. Future Extensions
 - Kafka ingestion pipeline; per-tenant bandwidth throttling (if requirement changes); multi-region replication; fine-grained per-endpoint ABAC.
 
-See ddl.sql for schema & openapi spec for contract.
+## 6. Recent API Additions (v0.1.1)
+Additive, backward-compatible endpoints & schemas:
+- RBAC Entities: /roles (CRUD), /memberships (create/list/delete) enabling explicit user↔tenant role mapping.
+- Per-User Engines: /users/{id}/engines to set allowed subset of [xray, wireguard]; reflected in /users/{id}/configs and WireGuard QR endpoint.
+- Config & QR Delivery: /users/{id}/configs returns engine-keyed config artifacts; /users/{id}/wireguard/qr returns SVG QR (403 if wireguard disabled).
+- Traffic Ingestion & Summaries: /traffic/events (raw sampling, at-least-once) + /traffic/summary (aggregate). Complements existing /traffic/rollups for hourly aggregation and /traffic/usage snapshot.
+- Node Policy & Health: /nodes/{id}/policy stores opaque policy doc for future scheduling/enforcement; /nodes/{id}/health lightweight probe.
+- mTLS Clarification: OpenAPI description now explicitly states client cert SAN=node_id requirement.
 
+No existing paths or response shapes were changed; all additions are optional for older clients.
+
+See ddl.sql for schema & openapi spec for contract.
