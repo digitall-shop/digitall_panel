@@ -1,0 +1,85 @@
+syntax = "proto3";
+package vpnpanel;
+
+option go_package = "github.com/example/vpnpanel/proto";
+
+// mTLS enforced at transport; SAN contains node_id.
+// Control plane -> Node commands
+message SubscriptionEngineConfig {
+  string subscription_id = 1;
+  string engine = 2; // xray or wireguard
+  string username = 3; // xray email / wg peer name
+  string secret = 4;   // xray uuid / wg private key (not sent to node for wireguard usually)
+  string public_key = 5; // wg public key
+  string display_name = 6;
+  uint64 quota_bytes = 7; // 0 = unlimited
+  string status = 8; // active / suspended / exhausted
+  map<string,string> meta = 9; // engine specific
+}
+
+message XrayInboundConfig {
+  string inbound_id = 1;
+  string tag = 2;
+  int32 port = 3;
+  string protocol = 4; // vmess / vless / trojan
+  string settings_json = 5; // raw snippet
+  string stream_settings_json = 6; // raw snippet
+}
+
+message FullNodeConfigPush {
+  string node_id = 1;
+  repeated XrayInboundConfig xray_inbounds = 2;
+  repeated SubscriptionEngineConfig subscriptions = 3;
+  uint64 revision = 4; // monotonic config revision
+}
+
+message ConfigAck { string node_id = 1; uint64 revision = 2; bool success = 3; string error = 4; }
+
+message EnforcementCommand {
+  string subscription_id = 1;
+  string engine = 2;
+  string action = 3; // suspend / resume / revoke
+  uint64 revision = 4; // enforcement revision
+}
+
+message EnforcementResult {
+  string subscription_id = 1;
+  string engine = 2;
+  string action = 3;
+  bool success = 4;
+  string error = 5;
+}
+
+// Traffic sampling (node -> collector)
+message TrafficSample {
+  string node_id = 1;
+  string subscription_id = 2;
+  string engine = 3; // xray / wireguard
+  uint64 bytes_up = 4;
+  uint64 bytes_down = 5;
+  uint32 interval_seconds = 6;
+  uint64 counter_seq = 7; // monotonic per (node,sub,engine)
+  int64 period_end_unix = 8; // seconds
+}
+
+message TrafficIngestAck {
+  bool accepted = 1;
+  string message = 2;
+}
+
+service NodeControl {
+  // Unary full config (idempotent). Node replaces state if revision newer.
+  rpc PushFullConfig(FullNodeConfigPush) returns (ConfigAck);
+  // Streaming enforcement commands (server stream). Node connects and listens.
+  rpc StreamEnforcements(NodeHello) returns (stream EnforcementCommand);
+  // Node sends back results
+  rpc ReportEnforcementResult(EnforcementResult) returns (ConfigAck);
+}
+
+message NodeHello { string node_id = 1; uint64 current_revision = 2; }
+
+service TrafficIngest {
+  // Bi-directional streaming of traffic samples (at-least-once).
+  rpc StreamTraffic(stream TrafficSample) returns (stream TrafficIngestAck);
+}
+

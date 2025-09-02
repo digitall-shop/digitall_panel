@@ -1,0 +1,28 @@
+version: "3.9"
+services:
+  node-agent:
+    build:
+      context: ../../..
+      dockerfile: deploy/node-agent.Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-}
+      REDIS_URL: ${REDIS_URL:-}
+      SECRET_KEY: ${SECRET_KEY:-devsecret}
+      SAMPLE_INTERVAL_SECONDS: 60
+    volumes:
+      - /etc/wireguard:/etc/wireguard
+      - ../../../certs/ca:/certs/ca:ro
+      - ../../../certs/nodes:/certs/nodes:ro
+      - /var/run/xray:/var/run/xray
+      - /etc/xray:/etc/xray
+    network_mode: host
+    depends_on:
+      - xray
+  xray:
+    image: teddysun/xray:latest
+    restart: unless-stopped
+    volumes:
+      - /etc/xray:/etc/xray
+      - /var/run/xray:/var/run/xray
+    network_mode: host
+

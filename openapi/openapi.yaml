@@ -1,0 +1,425 @@
+openapi: 3.0.3
+info:
+  title: VPN Control Plane API
+  version: 0.1.0
+  description: >-
+    Marzban-like multi-tenant control plane for Xray + WireGuard. Quota (bytes) & expiry only.
+    Engines selectable per subscription. RBAC per tenant.
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+    Engine:
+      type: string
+      enum: [xray, wireguard]
+    Tenant:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+    User:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        tenant_id: { $ref: '#/components/schemas/UUID' }
+        username: { type: string }
+        email: { type: string }
+        is_active: { type: boolean }
+        is_superuser: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Role:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        description: { type: string }
+    Plan:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        tenant_id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        quota_bytes: { type: integer, nullable: true }
+        duration_days: { type: integer, nullable: true }
+        allow_engines:
+          type: array
+          items: { $ref: '#/components/schemas/Engine' }
+        price_cents: { type: integer }
+        created_at: { type: string, format: date-time }
+    Subscription:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        tenant_id: { $ref: '#/components/schemas/UUID' }
+        user_id: { $ref: '#/components/schemas/UUID' }
+        plan_id: { $ref: '#/components/schemas/UUID' }
+        quota_bytes: { type: integer, nullable: true }
+        quota_used_bytes: { type: integer }
+        expiry_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [active, exhausted, expired, suspended] }
+        engines:
+          type: array
+          items: { $ref: '#/components/schemas/Engine' }
+        created_at: { type: string, format: date-time }
+    Credential:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        subscription_id: { $ref: '#/components/schemas/UUID' }
+        engine: { $ref: '#/components/schemas/Engine' }
+        username: { type: string }
+        public_key: { type: string, nullable: true }
+        secret: { type: string }
+        meta: { type: object, additionalProperties: true }
+    Node:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        tenant_id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        public_address: { type: string }
+        grpc_endpoint: { type: string }
+        status: { type: string }
+        last_heartbeat: { type: string, format: date-time, nullable: true }
+        capacity_score: { type: integer }
+        tags:
+          type: array
+          items: { type: string }
+    Assignment:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        subscription_id: { $ref: '#/components/schemas/UUID' }
+        node_id: { $ref: '#/components/schemas/UUID' }
+        engine: { $ref: '#/components/schemas/Engine' }
+        role: { type: string, enum: [primary, secondary] }
+        created_at: { type: string, format: date-time }
+    TrafficRollup:
+      type: object
+      properties:
+        hour_start_ts: { type: string, format: date-time }
+        subscription_id: { $ref: '#/components/schemas/UUID' }
+        node_id: { $ref: '#/components/schemas/UUID' }
+        engine: { $ref: '#/components/schemas/Engine' }
+        bytes_up: { type: integer }
+        bytes_down: { type: integer }
+        samples: { type: integer }
+    TrafficEventSummary:
+      type: object
+      properties:
+        event_end_ts: { type: string, format: date-time }
+        subscription_id: { $ref: '#/components/schemas/UUID' }
+        node_id: { $ref: '#/components/schemas/UUID' }
+        engine: { $ref: '#/components/schemas/Engine' }
+        bytes_up: { type: integer }
+        bytes_down: { type: integer }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer }
+        action: { type: string }
+        entity_type: { type: string }
+        entity_id: { $ref: '#/components/schemas/UUID' }
+        created_at: { type: string, format: date-time }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        tenant: { type: string, description: 'Tenant name or ID' }
+    TokenPair:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, default: bearer }
+    CreateTenantRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    CreateUserRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        email: { type: string }
+        is_active: { type: boolean, default: true }
+    CreatePlanRequest:
+      type: object
+      required: [name, allow_engines]
+      properties:
+        name: { type: string }
+        quota_bytes: { type: integer, nullable: true }
+        duration_days: { type: integer, nullable: true }
+        allow_engines:
+          type: array
+          items: { $ref: '#/components/schemas/Engine' }
+        price_cents: { type: integer }
+    CreateSubscriptionRequest:
+      type: object
+      required: [user_id, engines]
+      properties:
+        user_id: { $ref: '#/components/schemas/UUID' }
+        plan_id: { $ref: '#/components/schemas/UUID' }
+        quota_bytes: { type: integer, nullable: true }
+        expiry_at: { type: string, format: date-time, nullable: true }
+        engines:
+          type: array
+          items: { $ref: '#/components/schemas/Engine' }
+    AssignNodeRequest:
+      type: object
+      required: [node_id, engine]
+      properties:
+        node_id: { $ref: '#/components/schemas/UUID' }
+        engine: { $ref: '#/components/schemas/Engine' }
+        role: { type: string, enum: [primary, secondary], default: primary }
+paths:
+  /auth/login:
+    post:
+      summary: Login and obtain tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Token pair
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: New access token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+  /tenants:
+    post:
+      summary: Create tenant
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTenantRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Tenant' } } } }
+    get:
+      summary: List tenants (superuser)
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tenant' }
+  /tenants/{tenant_id}:
+    get:
+      summary: Get tenant
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Tenant' } } } }
+  /users:
+    post:
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    get:
+      summary: List users
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/User' } }
+  /users/{user_id}:
+    get:
+      summary: Get user
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+  /plans:
+    post:
+      summary: Create plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePlanRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Plan' } } } }
+    get:
+      summary: List plans
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Plan' } } } } }
+  /plans/{plan_id}:
+    get:
+      summary: Get plan
+      parameters:
+        - in: path
+          name: plan_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Plan' } } } }
+  /subscriptions:
+    post:
+      summary: Create subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSubscriptionRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+    get:
+      summary: List subscriptions
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Subscription' } } } } }
+  /subscriptions/{subscription_id}:
+    get:
+      summary: Get subscription
+      parameters:
+        - in: path
+          name: subscription_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+  /subscriptions/{subscription_id}/assign:
+    post:
+      summary: Assign node to subscription
+      parameters:
+        - in: path
+          name: subscription_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignNodeRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Assignment' } } } }
+  /nodes:
+    post:
+      summary: Register node (logical)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, public_address, grpc_endpoint]
+              properties:
+                name: { type: string }
+                public_address: { type: string }
+                grpc_endpoint: { type: string }
+                tags:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+    get:
+      summary: List nodes
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Node' } } } } }
+  /nodes/{node_id}:
+    get:
+      summary: Get node
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+  /traffic/rollups:
+    get:
+      summary: List hourly rollups (filtered)
+      parameters:
+        - in: query
+          name: subscription_id
+          schema: { $ref: '#/components/schemas/UUID' }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TrafficRollup' } } } } }
+  /traffic/usage/{subscription_id}:
+    get:
+      summary: Current usage snapshot
+      parameters:
+        - in: path
+          name: subscription_id
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Usage bytes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quota_bytes: { type: integer, nullable: true }
+                  used_bytes: { type: integer }
+                  remaining_bytes: { type: integer, nullable: true }
+                  status: { type: string }
+  /audit:
+    get:
+      summary: Audit log entries
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } } } }
+

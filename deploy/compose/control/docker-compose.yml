@@ -1,0 +1,74 @@
+version: "3.9"
+services:
+  reverse-proxy:
+    image: caddy:2-alpine
+    ports:
+      - "8443:8443"
+    volumes:
+      - ../../../deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - control-api
+  control-api:
+    build:
+      context: ../../..
+      dockerfile: deploy/control-api.Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      REFRESH_TOKEN_EXPIRE_MINUTES: 43200
+      JWT_ALG: HS256
+      REDIS_URL: ${REDIS_URL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+  collector:
+    build:
+      context: ../../..
+      dockerfile: deploy/collector.Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      SECRET_KEY: ${SECRET_KEY}
+    ports:
+      - "8010:8010"
+    depends_on:
+      - postgres
+      - redis
+  scheduler:
+    build:
+      context: ../../..
+      dockerfile: deploy/scheduler.Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      SECRET_KEY: ${SECRET_KEY}
+    ports:
+      - "8020:8020"
+    depends_on:
+      - postgres
+      - redis
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vpnpanel
+      POSTGRES_PASSWORD: vpnpanelpassword
+      POSTGRES_DB: vpnpanel
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server","--save","","--appendonly","no"]
+    ports:
+      - "6379:6379"
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
+

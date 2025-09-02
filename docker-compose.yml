@@ -1,0 +1,100 @@
+version: "3.9"
+
+services:
+  reverse-proxy:
+    image: caddy:2-alpine
+    container_name: vpn_reverse_proxy
+    ports:
+      - "8443:8443"  # HTTPS (panel clients)
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./certs/ca:/certs/ca:ro
+      - ./certs/nodes:/certs/nodes:ro
+    depends_on:
+      - control-api
+    networks: [panel]
+
+  control-api:
+    build:
+      context: .
+      dockerfile: deploy/control-api.Dockerfile
+    container_name: control_api
+    env_file: .env
+    command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","8000"]
+    expose: ["8000"]
+    depends_on:
+      - postgres
+      - redis
+    networks: [panel]
+
+  collector:
+    build:
+      context: .
+      dockerfile: deploy/collector.Dockerfile
+    container_name: collector
+    env_file: .env
+    command: ["python","services/collector/main.py"]
+    depends_on:
+      - postgres
+      - redis
+    networks: [panel]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: deploy/scheduler.Dockerfile
+    container_name: scheduler
+    env_file: .env
+    command: ["python","services/scheduler/main.py"]
+    depends_on:
+      - postgres
+      - redis
+    networks: [panel]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [panel]
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: ["redis-server","--save","","--appendonly","no"]
+    networks: [panel]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks: [panel]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks: [panel]
+    depends_on:
+      - prometheus
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  panel:
+    driver: bridge
+
