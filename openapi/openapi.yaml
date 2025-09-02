@@ -1,425 +1,624 @@
 openapi: 3.0.3
 info:
-  title: VPN Control Plane API
-  version: 0.1.0
+  title: Marzban API
+  version: 0.8.4
   description: >-
-    Marzban-like multi-tenant control plane for Xray + WireGuard. Quota (bytes) & expiry only.
-    Engines selectable per subscription. RBAC per tenant.
+    Clean baseline of Marzban 0.8.4 HTTP API surface (no added domains). This file intentionally
+    removes prior experimental multi‑tenant / commerce / RBAC / WireGuard extensions to restore
+    the original minimal panel endpoints before new WireGuard work is layered on.
 servers:
-  - url: https://api.example.com/v1
-security:
-  - bearerAuth: []
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-  schemas:
-    UUID:
-      type: string
-      format: uuid
-    Engine:
-      type: string
-      enum: [xray, wireguard]
-    Tenant:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        name: { type: string }
-        created_at: { type: string, format: date-time }
-    User:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        tenant_id: { $ref: '#/components/schemas/UUID' }
-        username: { type: string }
-        email: { type: string }
-        is_active: { type: boolean }
-        is_superuser: { type: boolean }
-        created_at: { type: string, format: date-time }
-    Role:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        name: { type: string }
-        description: { type: string }
-    Plan:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        tenant_id: { $ref: '#/components/schemas/UUID' }
-        name: { type: string }
-        quota_bytes: { type: integer, nullable: true }
-        duration_days: { type: integer, nullable: true }
-        allow_engines:
-          type: array
-          items: { $ref: '#/components/schemas/Engine' }
-        price_cents: { type: integer }
-        created_at: { type: string, format: date-time }
-    Subscription:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        tenant_id: { $ref: '#/components/schemas/UUID' }
-        user_id: { $ref: '#/components/schemas/UUID' }
-        plan_id: { $ref: '#/components/schemas/UUID' }
-        quota_bytes: { type: integer, nullable: true }
-        quota_used_bytes: { type: integer }
-        expiry_at: { type: string, format: date-time, nullable: true }
-        status: { type: string, enum: [active, exhausted, expired, suspended] }
-        engines:
-          type: array
-          items: { $ref: '#/components/schemas/Engine' }
-        created_at: { type: string, format: date-time }
-    Credential:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        subscription_id: { $ref: '#/components/schemas/UUID' }
-        engine: { $ref: '#/components/schemas/Engine' }
-        username: { type: string }
-        public_key: { type: string, nullable: true }
-        secret: { type: string }
-        meta: { type: object, additionalProperties: true }
-    Node:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        tenant_id: { $ref: '#/components/schemas/UUID' }
-        name: { type: string }
-        public_address: { type: string }
-        grpc_endpoint: { type: string }
-        status: { type: string }
-        last_heartbeat: { type: string, format: date-time, nullable: true }
-        capacity_score: { type: integer }
-        tags:
-          type: array
-          items: { type: string }
-    Assignment:
-      type: object
-      properties:
-        id: { $ref: '#/components/schemas/UUID' }
-        subscription_id: { $ref: '#/components/schemas/UUID' }
-        node_id: { $ref: '#/components/schemas/UUID' }
-        engine: { $ref: '#/components/schemas/Engine' }
-        role: { type: string, enum: [primary, secondary] }
-        created_at: { type: string, format: date-time }
-    TrafficRollup:
-      type: object
-      properties:
-        hour_start_ts: { type: string, format: date-time }
-        subscription_id: { $ref: '#/components/schemas/UUID' }
-        node_id: { $ref: '#/components/schemas/UUID' }
-        engine: { $ref: '#/components/schemas/Engine' }
-        bytes_up: { type: integer }
-        bytes_down: { type: integer }
-        samples: { type: integer }
-    TrafficEventSummary:
-      type: object
-      properties:
-        event_end_ts: { type: string, format: date-time }
-        subscription_id: { $ref: '#/components/schemas/UUID' }
-        node_id: { $ref: '#/components/schemas/UUID' }
-        engine: { $ref: '#/components/schemas/Engine' }
-        bytes_up: { type: integer }
-        bytes_down: { type: integer }
-    AuditLog:
-      type: object
-      properties:
-        id: { type: integer }
-        action: { type: string }
-        entity_type: { type: string }
-        entity_id: { $ref: '#/components/schemas/UUID' }
-        created_at: { type: string, format: date-time }
-    LoginRequest:
-      type: object
-      required: [username, password]
-      properties:
-        username: { type: string }
-        password: { type: string }
-        tenant: { type: string, description: 'Tenant name or ID' }
-    TokenPair:
-      type: object
-      properties:
-        access_token: { type: string }
-        refresh_token: { type: string }
-        token_type: { type: string, default: bearer }
-    CreateTenantRequest:
-      type: object
-      required: [name]
-      properties:
-        name: { type: string }
-    CreateUserRequest:
-      type: object
-      required: [username, password]
-      properties:
-        username: { type: string }
-        password: { type: string }
-        email: { type: string }
-        is_active: { type: boolean, default: true }
-    CreatePlanRequest:
-      type: object
-      required: [name, allow_engines]
-      properties:
-        name: { type: string }
-        quota_bytes: { type: integer, nullable: true }
-        duration_days: { type: integer, nullable: true }
-        allow_engines:
-          type: array
-          items: { $ref: '#/components/schemas/Engine' }
-        price_cents: { type: integer }
-    CreateSubscriptionRequest:
-      type: object
-      required: [user_id, engines]
-      properties:
-        user_id: { $ref: '#/components/schemas/UUID' }
-        plan_id: { $ref: '#/components/schemas/UUID' }
-        quota_bytes: { type: integer, nullable: true }
-        expiry_at: { type: string, format: date-time, nullable: true }
-        engines:
-          type: array
-          items: { $ref: '#/components/schemas/Engine' }
-    AssignNodeRequest:
-      type: object
-      required: [node_id, engine]
-      properties:
-        node_id: { $ref: '#/components/schemas/UUID' }
-        engine: { $ref: '#/components/schemas/Engine' }
-        role: { type: string, enum: [primary, secondary], default: primary }
+  - url: /
 paths:
-  /auth/login:
-    post:
-      summary: Login and obtain tokens
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/LoginRequest' }
+  /:
+    get:
+      tags: [default]
+      summary: Root (panel status)
       responses:
-        '200':
-          description: Token pair
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TokenPair' }
-  /auth/refresh:
+        '200': { description: OK }
+
+  # Admin
+  /api/admin/token:
     post:
-      summary: Refresh access token
+      tags: [Admin]
+      summary: Obtain admin token
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [username, password]
               properties:
-                refresh_token: { type: string }
+                username: { type: string }
+                password: { type: string }
       responses:
         '200':
-          description: New access token
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TokenPair' }
-  /tenants:
-    post:
-      summary: Create tenant
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateTenantRequest' }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Tenant' } } } }
-    get:
-      summary: List tenants (superuser)
-      responses:
-        '200':
-          description: List
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Tenant' }
-  /tenants/{tenant_id}:
-    get:
-      summary: Get tenant
-      parameters:
-        - in: path
-          name: tenant_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Tenant' } } } }
-  /users:
-    post:
-      summary: Create user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateUserRequest' }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
-    get:
-      summary: List users
-      responses:
-        '200':
-          description: List
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: '#/components/schemas/User' } }
-  /users/{user_id}:
-    get:
-      summary: Get user
-      parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
-  /plans:
-    post:
-      summary: Create plan
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreatePlanRequest' }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Plan' } } } }
-    get:
-      summary: List plans
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Plan' } } } } }
-  /plans/{plan_id}:
-    get:
-      summary: Get plan
-      parameters:
-        - in: path
-          name: plan_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Plan' } } } }
-  /subscriptions:
-    post:
-      summary: Create subscription
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateSubscriptionRequest' }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
-    get:
-      summary: List subscriptions
-      parameters:
-        - in: query
-          name: status
-          schema: { type: string }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Subscription' } } } } }
-  /subscriptions/{subscription_id}:
-    get:
-      summary: Get subscription
-      parameters:
-        - in: path
-          name: subscription_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
-  /subscriptions/{subscription_id}/assign:
-    post:
-      summary: Assign node to subscription
-      parameters:
-        - in: path
-          name: subscription_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/AssignNodeRequest' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Assignment' } } } }
-  /nodes:
-    post:
-      summary: Register node (logical)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, public_address, grpc_endpoint]
-              properties:
-                name: { type: string }
-                public_address: { type: string }
-                grpc_endpoint: { type: string }
-                tags:
-                  type: array
-                  items: { type: string }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
-    get:
-      summary: List nodes
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Node' } } } } }
-  /nodes/{node_id}:
-    get:
-      summary: Get node
-      parameters:
-        - in: path
-          name: node_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
-  /traffic/rollups:
-    get:
-      summary: List hourly rollups (filtered)
-      parameters:
-        - in: query
-          name: subscription_id
-          schema: { $ref: '#/components/schemas/UUID' }
-        - in: query
-          name: from
-          schema: { type: string, format: date-time }
-        - in: query
-          name: to
-          schema: { type: string, format: date-time }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TrafficRollup' } } } } }
-  /traffic/usage/{subscription_id}:
-    get:
-      summary: Current usage snapshot
-      parameters:
-        - in: path
-          name: subscription_id
-          required: true
-          schema: { $ref: '#/components/schemas/UUID' }
-      responses:
-        '200':
-          description: Usage bytes
+          description: Token issued
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  quota_bytes: { type: integer, nullable: true }
-                  used_bytes: { type: integer }
-                  remaining_bytes: { type: integer, nullable: true }
-                  status: { type: string }
-  /audit:
+                  access_token: { type: string }
+                  token_type: { type: string, example: bearer }
+  /api/admin:
     get:
-      summary: Audit log entries
-      parameters:
-        - in: query
-          name: limit
-          schema: { type: integer, default: 100 }
+      tags: [Admin]
+      summary: Get current admin profile
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Admin' } } } }
+    post:
+      tags: [Admin]
+      summary: Create admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Admin' } } } }
+  /api/admin/{username}:
+    put:
+      tags: [Admin]
+      summary: Update admin
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUpdate' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Admin' } } } }
+    delete:
+      tags: [Admin]
+      summary: Delete admin
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+  /api/admins:
+    get:
+      tags: [Admin]
+      summary: List admins
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Admin' } }
+  /api/admin/{username}/users/disable:
+    post:
+      tags: [Admin]
+      summary: Disable all users owned by an admin
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Users disabled }
+  /api/admin/{username}/users/activate:
+    post:
+      tags: [Admin]
+      summary: Activate all users owned by an admin
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Users activated }
+  /api/admin/usage/reset/{username}:
+    post:
+      tags: [Admin]
+      summary: Reset usage for user
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Usage reset }
+  /api/admin/usage/{username}:
+    get:
+      tags: [Admin]
+      summary: Get usage for user
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usage' }
 
+  # Core
+  /api/core:
+    get:
+      tags: [Core]
+      summary: Core info
+      responses:
+        '200': { description: OK }
+  /api/core/restart:
+    post:
+      tags: [Core]
+      summary: Restart core
+      responses:
+        '202': { description: Restart scheduled }
+  /api/core/config:
+    get:
+      tags: [Core]
+      summary: Get core config
+      responses:
+        '200': { description: OK }
+    put:
+      tags: [Core]
+      summary: Update core config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+
+  # Node
+  /api/node/settings:
+    get:
+      tags: [Node]
+      summary: Node settings
+      responses:
+        '200': { description: OK }
+  /api/node:
+    post:
+      tags: [Node]
+      summary: Register node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+  /api/node/{node_id}:
+    get:
+      tags: [Node]
+      summary: Get node
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+    put:
+      tags: [Node]
+      summary: Update node
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeUpdate' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+    delete:
+      tags: [Node]
+      summary: Delete node
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+  /api/nodes:
+    get:
+      tags: [Node]
+      summary: List nodes
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Node' } }
+  /api/node/{node_id}/reconnect:
+    post:
+      tags: [Node]
+      summary: Force node reconnect
+      parameters:
+        - in: path
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Reconnect triggered }
+  /api/nodes/usage:
+    get:
+      tags: [Node]
+      summary: Aggregate node usage
+      responses:
+        '200': { description: OK }
+
+  # Subscription
+  /sub/{token}/:
+    get:
+      tags: [Subscription]
+      summary: Subscription config (default)
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /sub/{token}/info:
+    get:
+      tags: [Subscription]
+      summary: Subscription info
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /sub/{token}/usage:
+    get:
+      tags: [Subscription]
+      summary: Subscription usage
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Usage' } } } }
+  /sub/{token}/{client_type}:
+    get:
+      tags: [Subscription]
+      summary: Subscription config for client type
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+        - in: path
+          name: client_type
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+
+  # System
+  /api/system:
+    get:
+      tags: [System]
+      summary: System health / version
+      responses:
+        '200': { description: OK }
+  /api/inbounds:
+    get:
+      tags: [System]
+      summary: Inbounds list
+      responses:
+        '200': { description: OK }
+  /api/hosts:
+    get:
+      tags: [System]
+      summary: Get hosts file entries
+      responses:
+        '200': { description: OK }
+    put:
+      tags: [System]
+      summary: Update hosts file entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+
+  # User Template
+  /api/user_template:
+    post:
+      tags: [User Template]
+      summary: Create user template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserTemplateCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/UserTemplate' } } } }
+    get:
+      tags: [User Template]
+      summary: List user templates
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/UserTemplate' } } } } }
+  /api/user_template/{template_id}:
+    get:
+      tags: [User Template]
+      summary: Get user template
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/UserTemplate' } } } }
+    put:
+      tags: [User Template]
+      summary: Update user template
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserTemplateUpdate' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/UserTemplate' } } } }
+    delete:
+      tags: [User Template]
+      summary: Delete user template
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+
+  # User
+  /api/user:
+    post:
+      tags: [User]
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+  /api/user/{username}:
+    get:
+      tags: [User]
+      summary: Get user
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    put:
+      tags: [User]
+      summary: Update user
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdate' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    delete:
+      tags: [User]
+      summary: Delete user
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+  /api/user/{username}/reset:
+    post:
+      tags: [User]
+      summary: Reset user (usage / profile depending on implementation)
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Reset }
+  /api/user/{username}/revoke_sub:
+    post:
+      tags: [User]
+      summary: Revoke user subscription
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Revoked }
+  /api/users:
+    get:
+      tags: [User]
+      summary: List users
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/User' } } } } }
+  /api/users/reset:
+    post:
+      tags: [User]
+      summary: Bulk reset users
+      responses:
+        '200': { description: Reset }
+  /api/user/{username}/usage:
+    get:
+      tags: [User]
+      summary: Get user usage
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Usage' } } } }
+  /api/user/{username}/active-next:
+    post:
+      tags: [User]
+      summary: Activate next subscription
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Activated }
+  /api/users/usage:
+    get:
+      tags: [User]
+      summary: Aggregate usage for users
+      responses:
+        '200': { description: OK }
+  /api/user/{username}/set-owner:
+    put:
+      tags: [User]
+      summary: Set owner admin for user
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner]
+              properties:
+                owner: { type: string }
+      responses:
+        '200': { description: Owner set }
+  /api/users/expired:
+    get:
+      tags: [User]
+      summary: List expired users
+      responses:
+        '200': { description: OK }
+    delete:
+      tags: [User]
+      summary: Delete expired users
+      responses:
+        '200': { description: Deleted }
+
+components:
+  schemas:
+    Admin:
+      type: object
+      properties:
+        username: { type: string }
+        email: { type: string, nullable: true }
+        is_active: { type: boolean }
+    AdminCreate:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        email: { type: string, nullable: true }
+    AdminUpdate:
+      type: object
+      properties:
+        password: { type: string }
+        email: { type: string, nullable: true }
+        is_active: { type: boolean }
+    User:
+      type: object
+      properties:
+        username: { type: string }
+        status: { type: string }
+        owner: { type: string, nullable: true }
+    UserCreate:
+      type: object
+      required: [username]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        owner: { type: string, nullable: true }
+    UserUpdate:
+      type: object
+      properties:
+        password: { type: string }
+        status: { type: string }
+        owner: { type: string, nullable: true }
+    Usage:
+      type: object
+      properties:
+        up: { type: integer }
+        down: { type: integer }
+        total: { type: integer }
+    Node:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        address: { type: string }
+        status: { type: string }
+    NodeCreate:
+      type: object
+      required: [name, address]
+      properties:
+        name: { type: string }
+        address: { type: string }
+    NodeUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        address: { type: string }
+        status: { type: string }
+    UserTemplate:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        settings: { type: object }
+    UserTemplateCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        settings: { type: object }
+    UserTemplateUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        settings: { type: object }
+
+tags:
+  - name: Admin
+  - name: Core
+  - name: Node
+  - name: Subscription
+  - name: System
+  - name: User Template
+  - name: User
+  - name: default
